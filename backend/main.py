@@ -10,6 +10,7 @@ import json
 import asyncio
 
 from . import storage
+from . import config
 from .council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings
 
 app = FastAPI(title="LLM Council API")
@@ -50,10 +51,71 @@ class Conversation(BaseModel):
     messages: List[Dict[str, Any]]
 
 
+class DecideRequest(BaseModel):
+    """Request for stateless council decision."""
+    prompt: str
+    models: list[str] | None = None
+    chairman: str | None = None
+
+
 @app.get("/")
 async def root():
     """Health check endpoint."""
     return {"status": "ok", "service": "LLM Council API"}
+
+
+@app.get("/api/config")
+async def get_config():
+    """Return current configuration."""
+    return {
+        "council_models": config.COUNCIL_MODELS,
+        "chairman_model": config.CHAIRMAN_MODEL,
+        "version": "1.1.0",
+        "model_count": len(config.COUNCIL_MODELS),
+    }
+
+
+@app.post("/api/council/decide")
+async def council_decide(request: DecideRequest):
+    """
+    Stateless endpoint for programmatic callers (MAH, TestTeam).
+    Does NOT create a conversation. Accepts a prompt, runs all 3 stages,
+    returns the result directly.
+    """
+    models = request.models or config.COUNCIL_MODELS
+    chairman = request.chairman or config.CHAIRMAN_MODEL
+
+    # Temporarily override config for this request
+    original_models = config.COUNCIL_MODELS
+    original_chairman = config.CHAIRMAN_MODEL
+    try:
+        config.COUNCIL_MODELS = models
+        config.CHAIRMAN_MODEL = chairman
+
+        # Run all 3 stages
+        stage1 = await stage1_collect_responses(request.prompt)
+        stage2_rankings, label_to_model = await stage2_collect_rankings(
+            request.prompt, stage1
+        )
+        stage3 = await stage3_synthesize_final(
+            request.prompt, stage1, stage2_rankings
+        )
+        aggregate = calculate_aggregate_rankings(stage2_rankings, label_to_model)
+    finally:
+        config.COUNCIL_MODELS = original_models
+        config.CHAIRMAN_MODEL = original_chairman
+
+    return {
+        "stage1": stage1,
+        "stage2": stage2_rankings,
+        "stage3": stage3,
+        "metadata": {
+            "label_to_model": label_to_model,
+            "aggregate_rankings": aggregate,
+            "models_used": models,
+            "chairman": chairman,
+        },
+    }
 
 
 @app.get("/api/conversations", response_model=List[ConversationMetadata])
