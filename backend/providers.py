@@ -36,8 +36,20 @@ PROVIDERS = {
         "api_key_env": "HF_API_KEY",
         "model": "meta-llama/llama-3.1-8b-instruct",
     },
+    "groq/kimi-k2-instruct": {
+        "name": "Groq KiMi-K2 1T",
+        "base_url": "https://api.groq.com/openai/v1/chat/completions",
+        "api_key_env": "GROQ_API_KEY",
+        "model": "moonshotai/kimi-k2-instruct",
+    },
+    "groq/llama-4-scout": {
+        "name": "Groq Llama 4 Scout",
+        "base_url": "https://api.groq.com/openai/v1/chat/completions",
+        "api_key_env": "GROQ_API_KEY",
+        "model": "meta-llama/llama-4-scout-17b-16e-instruct",
+    },
     "groq/deepseek-r1-distill-llama-70b": {
-        "name": "Groq DeepSeek R1 70B",
+        "name": "Groq DeepSeek R1 70B (deprecated)",
         "base_url": "https://api.groq.com/openai/v1/chat/completions",
         "api_key_env": "GROQ_API_KEY",
         "model": "deepseek-r1-distill-llama-70b",

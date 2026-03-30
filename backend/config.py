@@ -9,9 +9,10 @@ load_dotenv()
 COUNCIL_MODELS = [
     "ollama/llama3.1:8b",                    # Local (Ollama, free)
     "google/gemini-2.5-pro",                  # Google AI Studio (free tier)
-    "groq/llama-3.3-70b-versatile",          # Groq (free tier, fast)
+    "groq/llama-3.3-70b-versatile",          # Groq Llama 3.3 (free, fast)
     "huggingface/llama-3.1-8b",              # HuggingFace Inference (free tier)
-    "groq/deepseek-r1-distill-llama-70b",    # Groq DeepSeek (free tier)
+    "groq/kimi-k2-instruct",                 # Groq KiMi-K2 1T param (free!)
+    "groq/llama-4-scout",                    # Groq Llama 4 Scout (free!)
 ]
 
 # Chairman model — synthesizes final response
