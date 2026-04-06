@@ -259,3 +259,54 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8001)
+
+
+# ============================================================
+# Phase 3 — Router (epsilon-greedy bandit, swap path for Ruflo Q-learning)
+# ============================================================
+from . import router as router_module
+
+_router_instance = None
+def _get_router():
+    global _router_instance
+    if _router_instance is None:
+        _router_instance = router_module.Router(all_models=config.COUNCIL_MODELS)
+    return _router_instance
+
+
+class RecommendRequest(BaseModel):
+    task_kind: str
+    candidates: list[str] | None = None
+    n: int = 3
+
+
+class FeedbackRequest(BaseModel):
+    decision_id: str
+    scores: dict
+
+
+@app.post('/api/router/recommend')
+async def router_recommend(req: RecommendRequest):
+    r = _get_router()
+    picks, decision_id, explanation = r.recommend(
+        task_kind=req.task_kind,
+        candidate_models=req.candidates,
+        n=req.n,
+    )
+    return {
+        'models': picks,
+        'decision_id': decision_id,
+        'explanation': explanation,
+    }
+
+
+@app.post('/api/router/feedback')
+async def router_feedback(req: FeedbackRequest):
+    r = _get_router()
+    return r.feedback(req.decision_id, req.scores)
+
+
+@app.get('/api/router/state')
+async def router_state(task_kind: str | None = None):
+    r = _get_router()
+    return r.stats(task_kind)
