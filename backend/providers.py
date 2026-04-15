@@ -91,17 +91,17 @@ PROVIDERS = {
         "api_key_env": "ANTHROPIC_API_KEY",
         "model": "claude-sonnet-4-6",
     },
-    "openai/gpt-5.4": {
-        "name": "GPT-5.4",
+    "openai/gpt-5.2": {
+        "name": "GPT-5.2",
         "base_url": "https://api.openai.com/v1/chat/completions",
         "api_key_env": "OPENAI_API_KEY",
-        "model": "gpt-5.4",
+        "model": "gpt-5.2-2025-12-11",
     },
-    "openai/gpt-5.4-mini": {
-        "name": "GPT-5.4 Mini",
+    "openai/gpt-5.1-chat": {
+        "name": "GPT-5.1 Chat",
         "base_url": "https://api.openai.com/v1/chat/completions",
         "api_key_env": "OPENAI_API_KEY",
-        "model": "gpt-5.4-mini",
+        "model": "gpt-5.1-chat-latest",
     },
 }
 
@@ -157,6 +157,23 @@ async def _query_openai_compatible(
     else:
         base_url = provider["base_url"]
 
+    # GPT-5.x reasoning models require max_completion_tokens (not max_tokens)
+    # and reject custom temperature values — detect by model name
+    model_name = provider["model"]
+    is_gpt5_family = model_name.startswith("gpt-5") or model_name.startswith("gpt-5.")
+
+    body: Dict[str, Any] = {
+        "model": model_name,
+        "messages": messages,
+    }
+    if is_gpt5_family:
+        # GPT-5.x: needs higher budget because reasoning tokens consume the allowance
+        # before any visible output is emitted
+        body["max_completion_tokens"] = 4096
+    else:
+        body["max_tokens"] = 4096
+        body["temperature"] = 0.7
+
     async with httpx.AsyncClient(timeout=timeout) as client:
         response = await client.post(
             base_url,
@@ -164,12 +181,7 @@ async def _query_openai_compatible(
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {api_key}",
             },
-            json={
-                "model": provider["model"],
-                "messages": messages,
-                "max_tokens": 4096,
-                "temperature": 0.7,
-            },
+            json=body,
         )
         response.raise_for_status()
         data = response.json()
