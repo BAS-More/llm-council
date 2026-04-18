@@ -1,8 +1,10 @@
 """3-stage LLM Council orchestration."""
 
+import os
 from typing import List, Dict, Any, Tuple
 from .providers import query_models_parallel, query_model
 from .config import COUNCIL_MODELS, CHAIRMAN_MODEL
+from .dspy_comparison import DspyCouncilRanker
 
 
 async def stage1_collect_responses(user_query: str) -> List[Dict[str, Any]]:
@@ -54,6 +56,17 @@ async def stage2_collect_rankings(
         f"Response {label}": result['model']
         for label, result in zip(labels, stage1_results)
     }
+    model_to_label = {model: label for label, model in label_to_model.items()}
+
+    ranker = DspyCouncilRanker(
+        provider=os.getenv("DSPY_PROVIDER", "anthropic"),
+        model=os.getenv("DSPY_MODEL"),
+    )
+    if ranker.enabled:
+        dspy_ranking = await ranker.rank_responses(user_query, stage1_results)
+        stage2_result = _format_dspy_stage2_result(dspy_ranking, model_to_label)
+        if stage2_result["parsed_ranking"]:
+            return [stage2_result], label_to_model
 
     # Build the ranking prompt
     responses_text = "\n\n".join([
@@ -110,6 +123,37 @@ Now provide your evaluation and ranking:"""
             })
 
     return stage2_results, label_to_model
+
+
+def _format_dspy_stage2_result(
+    dspy_ranking: Dict[str, Any],
+    model_to_label: Dict[str, str],
+) -> Dict[str, Any]:
+    """Convert DSPy ranking output to the existing stage-2 response shape."""
+    ordered_labels: List[str] = []
+    ranking_lines: List[str] = []
+
+    for item in dspy_ranking.get("ranking", []):
+        label = model_to_label.get(item.get("model", ""))
+        if not label:
+            continue
+
+        ordered_labels.append(label)
+        score = item.get("score")
+        score_suffix = f" ({score:.2f})" if isinstance(score, (int, float)) else ""
+        ranking_lines.append(f"{len(ordered_labels)}. {label}{score_suffix}")
+
+    reasoning = dspy_ranking.get("reasoning") or "DSPy comparison completed."
+    ranking_text = reasoning
+    if ranking_lines:
+        ranking_text = f"{reasoning}\n\nFINAL RANKING:\n" + "\n".join(ranking_lines)
+
+    return {
+        "model": "DSPy Council Ranker",
+        "ranking": ranking_text,
+        "parsed_ranking": ordered_labels,
+        "method": dspy_ranking.get("method", "dspy"),
+    }
 
 
 async def stage3_synthesize_final(
@@ -228,10 +272,9 @@ def calculate_aggregate_rankings(
     model_positions = defaultdict(list)
 
     for ranking in stage2_results:
-        ranking_text = ranking['ranking']
-
-        # Parse the ranking from the structured format
-        parsed_ranking = parse_ranking_from_text(ranking_text)
+        parsed_ranking = ranking.get("parsed_ranking") or parse_ranking_from_text(
+            ranking['ranking']
+        )
 
         for position, label in enumerate(parsed_ranking, start=1):
             if label in label_to_model:
