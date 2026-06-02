@@ -1,0 +1,21 @@
+# Append this service block to /opt/ecosystem/docker-compose.yml (same compose network
+# as the llm-council service, so it reaches the Council over localhost-equivalent DNS).
+#
+# Prereqs (Avi):
+#   1. Copy this council-mcp/ folder to the box, e.g. /opt/repos/llm-council/council-mcp/
+#   2. Add COUNCIL_MCP_TOKEN=<vault-generated secret> to /opt/ecosystem/.env
+#   3. Point Cloudflare council-mcp.aidev.com.au -> this host:8002
+#
+  council-mcp:
+    build:
+      context: /opt/repos/llm-council/council-mcp
+      dockerfile: Dockerfile
+    environment:
+      - COUNCIL_BASE_URL=http://llm-council:8001
+      - COUNCIL_MCP_TOKEN=${COUNCIL_MCP_TOKEN}      # from /opt/ecosystem/.env
+      - COUNCIL_POLL_INTERVAL=3
+    ports:
+      - "8002:8002"
+    depends_on:
+      - llm-council
+    restart: unless-stopped
