@@ -5,27 +5,26 @@
 # agent (self-healing, best-practice, Jules, PR-health) may merge changes here — they may
 # only open a PR for human approval.
 #
-# !! REQUIRED: replace @OWNER with Avi's GitHub handle or a team (e.g. @BAS-More/council-owners).
-#    An invalid owner silently DISABLES enforcement, so this must be set, AND branch
-#    protection on `master` must be enabled (require PR + 1 approval + CODEOWNERS review).
-#    See FREEZE.md.
+# Owner is @Avi-Bendetsky (repo owner). For CODEOWNERS to actually ENFORCE, branch protection
+# on `master` must be enabled (require PR + 1 approval + Code Owners review) — see FREEZE.md.
+# To require a team instead, swap @Avi-Bendetsky for @BAS-More/<team>.
 
 # Council core — health-affecting
-/backend/main.py            @OWNER
-/backend/council.py         @OWNER
-/backend/council_roles.py   @OWNER
-/backend/council_async.py   @OWNER
-/backend/roles.py           @OWNER
-/backend/providers.py       @OWNER
-/backend/config.py          @OWNER
+/backend/main.py            @Avi-Bendetsky
+/backend/council.py         @Avi-Bendetsky
+/backend/council_roles.py   @Avi-Bendetsky
+/backend/council_async.py   @Avi-Bendetsky
+/backend/roles.py           @Avi-Bendetsky
+/backend/providers.py       @Avi-Bendetsky
+/backend/config.py          @Avi-Bendetsky
 
 # Build / freeze / gate
-/Dockerfile                 @OWNER
-/pyproject.toml             @OWNER
-/uv.lock                    @OWNER
-/scripts/council_health_gate.py  @OWNER
-/FREEZE.md                  @OWNER
-/.github/CODEOWNERS         @OWNER
+/Dockerfile                 @Avi-Bendetsky
+/pyproject.toml             @Avi-Bendetsky
+/uv.lock                    @Avi-Bendetsky
+/scripts/council_health_gate.py  @Avi-Bendetsky
+/FREEZE.md                  @Avi-Bendetsky
+/.github/CODEOWNERS         @Avi-Bendetsky
 
 # council-mcp — the MCP wrapper (co-deployed; same durability + propose-and-wait rules)
-/council-mcp/               @OWNER
+/council-mcp/               @Avi-Bendetsky
