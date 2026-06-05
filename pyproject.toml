@@ -11,3 +11,19 @@ dependencies = [
     "httpx>=0.27.0",
     "pydantic>=2.9.0",
 ]
+
+[tool.uv]
+# Security floors on transitively-pulled dependencies (Dependabot, 2026-06-05).
+# Neither package is imported directly: starlette enters via fastapi; idna via
+# httpx/anyio. Flooring them here keeps the resolver on patched versions without
+# promoting them to direct runtime deps.
+#   starlette>=1.0.1  GHSA-86qp-5c8j-p5mr (medium) — missing Host header validation
+#                     poisons request.url.path, bypassing path-based security checks.
+#                     Also lifts fastapi off its starlette<0.51 cap, so fastapi
+#                     re-resolves upward (fastapi has no upper pin here).
+#   idna>=3.15        GHSA-65pc-fj4g-8rjx (medium) — crafted input to idna.encode()
+#                     can bypass the CVE-2024-3651 fix.
+constraint-dependencies = [
+    "starlette>=1.0.1",
+    "idna>=3.15",
+]
