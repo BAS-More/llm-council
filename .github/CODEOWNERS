@@ -1,0 +1,28 @@
+# CODEOWNERS — Council protected surface (agent-governance: "propose and wait").
+#
+# Any change to the paths below requires the owner's review before merge. These are the
+# files whose breakage takes the Council down or changes its behaviour/cost. No autonomous
+# agent (self-healing, best-practice, Jules, PR-health) may merge changes here — they may
+# only open a PR for human approval.
+#
+# !! REQUIRED: replace @OWNER with Avi's GitHub handle or a team (e.g. @BAS-More/council-owners).
+#    An invalid owner silently DISABLES enforcement, so this must be set, AND branch
+#    protection on `master` must be enabled (require PR + 1 approval + CODEOWNERS review).
+#    See FREEZE.md.
+
+# Council core — health-affecting
+/backend/main.py            @OWNER
+/backend/council.py         @OWNER
+/backend/council_roles.py   @OWNER
+/backend/council_async.py   @OWNER
+/backend/roles.py           @OWNER
+/backend/providers.py       @OWNER
+/backend/config.py          @OWNER
+
+# Build / freeze / gate
+/Dockerfile                 @OWNER
+/pyproject.toml             @OWNER
+/uv.lock                    @OWNER
+/scripts/council_health_gate.py  @OWNER
+/FREEZE.md                  @OWNER
+/.github/CODEOWNERS         @OWNER

@@ -85,6 +85,18 @@ PROVIDERS = {
         "api_key_env": "ANTHROPIC_API_KEY",
         "model": "claude-opus-4-6",
     },
+    "anthropic/claude-opus-4-8": {
+        # Council Chairman — FULL ultrathink (extended thinking). The async job/poll path
+        # (council_async.py) removed Cloudflare's ~100s edge, which was the only thing that
+        # blocked deep thinking. budget_tokens=16000 per Sprint 45.4; max_tokens must exceed it.
+        "name": "Claude Opus 4.8 (ultrathink chairman)",
+        "type": "anthropic",
+        "api_key_env": "ANTHROPIC_API_KEY",
+        "model": "claude-opus-4-8",
+        "thinking": True,
+        "thinking_budget": 16000,
+        "max_tokens": 20000,
+    },
     "anthropic/claude-sonnet-4-6": {
         "name": "Claude Sonnet 4.6",
         "type": "anthropic",
@@ -239,11 +251,21 @@ async def _query_anthropic(
 
     body: Dict[str, Any] = {
         "model": model,
-        "max_tokens": 4096,
+        "max_tokens": provider.get("max_tokens", 4096),
         "messages": api_messages,
     }
     if system_text:
         body["system"] = system_text
+
+    # Extended thinking ("ultrathink") for reasoning chairmen (e.g. claude-opus-4-8).
+    # The API requires max_tokens > budget_tokens and the default temperature (we set
+    # neither temperature nor a beta header — 16k budget needs no beta). Thinking blocks
+    # come back as separate content blocks; the text-only parser below skips them.
+    if provider.get("thinking"):
+        budget = int(provider.get("thinking_budget", 16000))
+        if body["max_tokens"] <= budget:
+            body["max_tokens"] = budget + 4096
+        body["thinking"] = {"type": "enabled", "budget_tokens": budget}
 
     async with httpx.AsyncClient(timeout=timeout) as client:
         response = await client.post(
@@ -257,10 +279,15 @@ async def _query_anthropic(
         )
         response.raise_for_status()
         data = response.json()
-        # Anthropic returns content as array of blocks
-        return "".join(
+        # Anthropic returns content as an array of blocks; extended-thinking blocks are skipped.
+        text = "".join(
             block["text"] for block in data["content"] if block["type"] == "text"
         )
+        # Defensive: if the model emitted only thinking blocks and no visible text (whole token
+        # budget spent thinking, or truncated mid-think), treat it as a failure so the caller's
+        # fallback engages (e.g. the Opus->Sonnet chairman fallback) instead of a silently-empty
+        # synthesis. An empty council answer is useless, so None is the right signal here.
+        return text or None
 
 
 async def query_models_parallel(
