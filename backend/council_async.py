@@ -30,11 +30,14 @@ BULLETPROOFING ("doesn't break no matter what")
 """
 
 import asyncio
+import logging
 import time
 import uuid
 from typing import Any, Dict, Optional
 
 from .council_roles import run_full_council_roles
+
+_log = logging.getLogger("uvicorn.error")
 
 # --- Tunables (conservative defaults; raising them is a protected-path change → review) ---
 COUNCIL_RUN_TIMEOUT = 600   # hard ceiling for one run (ultrathink ~170s; 600 = wide safety margin)
@@ -79,10 +82,13 @@ async def _run(job_id: str, prompt: str, role_betas: Optional[dict]) -> None:
         job = _JOBS.get(job_id)
         if job is not None:
             job.update(status="error", error=f"council run exceeded {COUNCIL_RUN_TIMEOUT}s")
-    except Exception as e:  # noqa: BLE001 — deliberate catch-all: a job must never crash the server
+    except Exception:  # noqa: BLE001 — deliberate catch-all: a job must never crash the server
+        # Log full detail server-side; return a GENERIC message to the caller so exception
+        # text never reaches the HTTP response (avoids py/stack-trace-exposure / info leak).
+        _log.exception("council job %s failed", job_id)
         job = _JOBS.get(job_id)
         if job is not None:
-            job.update(status="error", error=f"{type(e).__name__}: {e}")
+            job.update(status="error", error="internal council error")
     finally:
         async with _lock:
             _inflight = max(0, _inflight - 1)
