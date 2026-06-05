@@ -1,0 +1,5 @@
+# council-mcp runtime deps (deployed container only; not needed to run the unit tests)
+mcp>=1.9.0
+httpx>=0.27.0
+starlette>=0.37.0
+uvicorn[standard]>=0.30.0

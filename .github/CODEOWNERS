@@ -26,3 +26,6 @@
 /scripts/council_health_gate.py  @OWNER
 /FREEZE.md                  @OWNER
 /.github/CODEOWNERS         @OWNER
+
+# council-mcp — the MCP wrapper (co-deployed; same durability + propose-and-wait rules)
+/council-mcp/               @OWNER
