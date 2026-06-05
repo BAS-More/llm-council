@@ -1,0 +1,30 @@
+# CODEOWNERS — Council protected surface (agent-governance: "propose and wait").
+#
+# Any change to the paths below requires the owner's review before merge. These are the
+# files whose breakage takes the Council down or changes its behaviour/cost. No autonomous
+# agent (self-healing, best-practice, Jules, PR-health) may merge changes here — they may
+# only open a PR for human approval.
+#
+# Owner is @Avi-Bendetsky (repo owner). For CODEOWNERS to actually ENFORCE, branch protection
+# on `master` must be enabled (require PR + 1 approval + Code Owners review) — see FREEZE.md.
+# To require a team instead, swap @Avi-Bendetsky for @BAS-More/<team>.
+
+# Council core — health-affecting
+/backend/main.py            @Avi-Bendetsky
+/backend/council.py         @Avi-Bendetsky
+/backend/council_roles.py   @Avi-Bendetsky
+/backend/council_async.py   @Avi-Bendetsky
+/backend/roles.py           @Avi-Bendetsky
+/backend/providers.py       @Avi-Bendetsky
+/backend/config.py          @Avi-Bendetsky
+
+# Build / freeze / gate
+/Dockerfile                 @Avi-Bendetsky
+/pyproject.toml             @Avi-Bendetsky
+/uv.lock                    @Avi-Bendetsky
+/scripts/council_health_gate.py  @Avi-Bendetsky
+/FREEZE.md                  @Avi-Bendetsky
+/.github/CODEOWNERS         @Avi-Bendetsky
+
+# council-mcp — the MCP wrapper (co-deployed; same durability + propose-and-wait rules)
+/council-mcp/               @Avi-Bendetsky

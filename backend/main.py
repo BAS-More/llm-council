@@ -12,6 +12,8 @@ import asyncio
 from . import storage
 from . import config
 from .council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings
+from .council_roles import run_full_council_roles
+from .roles import CHAIRMAN_MODEL as ROLE_CHAIRMAN_MODEL
 
 app = FastAPI(title="LLM Council API")
 
@@ -56,6 +58,7 @@ class DecideRequest(BaseModel):
     prompt: str
     models: list[str] | None = None
     chairman: str | None = None
+    roles: dict | None = None
 
 
 @app.get("/")
@@ -78,43 +81,62 @@ async def get_config():
 @app.post("/api/council/decide")
 async def council_decide(request: DecideRequest):
     """
-    Stateless endpoint for programmatic callers (MAH, TestTeam).
-    Does NOT create a conversation. Accepts a prompt, runs all 3 stages,
-    returns the result directly.
+    Stateless endpoint for programmatic callers (MAH, TestTeam, Brain x2 Output Gate).
+    Sprint 35 G24: defaults to the role-specialized Council. Legacy callers passing an
+    explicit `models` list get the original flat-list behavior (back-compat preserved).
+    Optional `roles` field tunes per-role beta intensity: {"steel-manner": {"beta": 0.2}}.
     """
-    models = request.models or config.COUNCIL_MODELS
-    chairman = request.chairman or config.CHAIRMAN_MODEL
+    # --- Legacy flat path: only when an explicit model list is requested ---
+    if request.models:
+        models = request.models
+        chairman = request.chairman or config.CHAIRMAN_MODEL
+        original_models = config.COUNCIL_MODELS
+        original_chairman = config.CHAIRMAN_MODEL
+        try:
+            config.COUNCIL_MODELS = models
+            config.CHAIRMAN_MODEL = chairman
+            stage1 = await stage1_collect_responses(request.prompt)
+            stage2_rankings, label_to_model = await stage2_collect_rankings(
+                request.prompt, stage1
+            )
+            stage3 = await stage3_synthesize_final(
+                request.prompt, stage1, stage2_rankings
+            )
+            aggregate = calculate_aggregate_rankings(stage2_rankings, label_to_model)
+        finally:
+            config.COUNCIL_MODELS = original_models
+            config.CHAIRMAN_MODEL = original_chairman
+        return {
+            "stage1": stage1,
+            "stage2": stage2_rankings,
+            "stage3": stage3,
+            "metadata": {
+                "label_to_model": label_to_model,
+                "aggregate_rankings": aggregate,
+                "models_used": models,
+                "chairman": chairman,
+            },
+        }
 
-    # Temporarily override config for this request
-    original_models = config.COUNCIL_MODELS
-    original_chairman = config.CHAIRMAN_MODEL
-    try:
-        config.COUNCIL_MODELS = models
-        config.CHAIRMAN_MODEL = chairman
-
-        # Run all 3 stages
-        stage1 = await stage1_collect_responses(request.prompt)
-        stage2_rankings, label_to_model = await stage2_collect_rankings(
-            request.prompt, stage1
-        )
-        stage3 = await stage3_synthesize_final(
-            request.prompt, stage1, stage2_rankings
-        )
-        aggregate = calculate_aggregate_rankings(stage2_rankings, label_to_model)
-    finally:
-        config.COUNCIL_MODELS = original_models
-        config.CHAIRMAN_MODEL = original_chairman
-
+    # --- Role-specialized path (Sprint 35 G24 default) ---
+    role_betas = {}
+    if request.roles:
+        for rname, rcfg in request.roles.items():
+            if isinstance(rcfg, dict) and "beta" in rcfg:
+                try:
+                    role_betas[rname] = float(rcfg["beta"])
+                except (TypeError, ValueError):
+                    pass
+    stage1, stage2_rankings, stage3, metadata = await run_full_council_roles(
+        request.prompt, role_betas
+    )
+    metadata["models_used"] = [r.get("model") for r in stage1]
+    metadata["chairman"] = ROLE_CHAIRMAN_MODEL
     return {
         "stage1": stage1,
         "stage2": stage2_rankings,
         "stage3": stage3,
-        "metadata": {
-            "label_to_model": label_to_model,
-            "aggregate_rankings": aggregate,
-            "models_used": models,
-            "chairman": chairman,
-        },
+        "metadata": metadata,
     }
 
 
@@ -310,3 +332,47 @@ async def router_feedback(req: FeedbackRequest):
 async def router_state(task_kind: str | None = None):
     r = _get_router()
     return r.stats(task_kind)
+
+
+# ============================================================
+# Async Council (Sprint 45.3 behaviour, reconstructed durably in-repo).
+# Job/poll API so each HTTP hop returns in <1s, keeping every call under Cloudflare's
+# ~100s edge (a full ultrathink run is ~170s). This is the endpoint council-mcp calls.
+#
+# Registered DEFENSIVELY: if council_async fails to import or wire for ANY reason, the
+# rest of the API (sync /decide, /, conversations, router) keeps serving and the app
+# still boots. A broken async layer degrades to "unavailable" (callers get a clean
+# 404), never a dead container — the "doesn't break no matter what" guarantee at the
+# wiring layer.
+# ============================================================
+try:
+    from . import council_async
+
+    class DecideAsyncRequest(BaseModel):
+        prompt: str
+        roles: dict | None = None
+
+    @app.post("/api/council/decide_async")
+    async def council_decide_async(request: DecideAsyncRequest):
+        """Start a role-specialized council run; returns {job_id} immediately (~0.03s)."""
+        role_betas = {}
+        if request.roles:
+            for rname, rcfg in request.roles.items():
+                if isinstance(rcfg, dict) and "beta" in rcfg:
+                    try:
+                        role_betas[rname] = float(rcfg["beta"])
+                    except (TypeError, ValueError):
+                        pass
+        return await council_async.start(request.prompt, role_betas)
+
+    @app.get("/api/council/decide_result/{job_id}")
+    async def council_decide_result(job_id: str):
+        """Poll a council job. Returns {status: pending|done|error, ...} (council-mcp shape)."""
+        return council_async.result(job_id)
+
+except Exception as _async_err:  # pragma: no cover - defensive: never block app startup
+    import logging as _logging
+    _logging.getLogger("uvicorn.error").error(
+        "Async Council endpoints NOT registered (degraded; sync council still works): %s",
+        _async_err,
+    )
