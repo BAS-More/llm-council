@@ -94,7 +94,10 @@ def test_run_exception_is_isolated(monkeypatch):
     monkeypatch.setattr(ca, "run_full_council_roles", boom)
     jid, _ = asyncio.run(_start_and_finish("x"))
     res = ca.result(jid)
-    assert res["status"] == "error" and "kaboom" in res["error"]
+    # Isolated AND no exception text leaked to the client (generic message only).
+    assert res["status"] == "error"
+    assert res["error"] == "internal council error"
+    assert "kaboom" not in res["error"]
 
 
 def test_run_timeout_is_bounded(monkeypatch):
