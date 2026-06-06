@@ -86,16 +86,16 @@ PROVIDERS = {
         "model": "claude-opus-4-6",
     },
     "anthropic/claude-opus-4-8": {
-        # Council Chairman — FULL ultrathink (extended thinking). The async job/poll path
-        # (council_async.py) removed Cloudflare's ~100s edge, which was the only thing that
-        # blocked deep thinking. budget_tokens=16000 per Sprint 45.4; max_tokens must exceed it.
-        "name": "Claude Opus 4.8 (ultrathink chairman)",
+        # Council Chairman. IMPORTANT: Opus 4.8 (and 4.7) REJECT manual extended thinking
+        # ({"type":"enabled","budget_tokens":...}) with HTTP 400 — they think ADAPTIVELY at
+        # effort=high BY DEFAULT on the Messages API. So we send NO thinking block; the
+        # high-effort reasoning ("ultrathink") happens automatically. Confirmed against the
+        # live platform.claude.com models + extended-thinking docs after a real 400 in prod.
+        "name": "Claude Opus 4.8 (adaptive high-effort chairman)",
         "type": "anthropic",
         "api_key_env": "ANTHROPIC_API_KEY",
         "model": "claude-opus-4-8",
-        "thinking": True,
-        "thinking_budget": 16000,
-        "max_tokens": 20000,
+        "max_tokens": 32000,
     },
     "anthropic/claude-sonnet-4-6": {
         "name": "Claude Sonnet 4.6",
@@ -257,7 +257,9 @@ async def _query_anthropic(
     if system_text:
         body["system"] = system_text
 
-    # Extended thinking ("ultrathink") for reasoning chairmen (e.g. claude-opus-4-8).
+    # Manual extended thinking for models that SUPPORT it (Sonnet 4.5 / Opus 4.6 & earlier).
+    # (Opus 4.7/4.8 reject manual thinking with 400 — they think adaptively at high effort
+    #  by default, so their PROVIDERS entry deliberately has no "thinking" key.)
     # The API requires max_tokens > budget_tokens and the default temperature (we set
     # neither temperature nor a beta header — 16k budget needs no beta). Thinking blocks
     # come back as separate content blocks; the text-only parser below skips them.
