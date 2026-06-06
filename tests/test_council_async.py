@@ -147,13 +147,16 @@ def test_auditor_and_fallback_routable():
     assert cr.CHAIRMAN_FALLBACK_MODEL in PROVIDERS
 
 
-def test_opus48_has_ultrathink_config():
+def test_opus48_uses_adaptive_default_not_manual_thinking():
     _reset()
     from backend.providers import PROVIDERS
     p = PROVIDERS["anthropic/claude-opus-4-8"]
     assert p["type"] == "anthropic"
-    assert p.get("thinking") is True
-    assert p["max_tokens"] > p["thinking_budget"]  # Anthropic API requires this
+    assert p["model"] == "claude-opus-4-8"
+    # Opus 4.8 rejects MANUAL extended thinking (HTTP 400); it thinks adaptively at high
+    # effort BY DEFAULT, so the entry must NOT carry a manual thinking/budget config.
+    assert "thinking" not in p
+    assert "thinking_budget" not in p
 
 
 # ---------------------------------------------------------------- wiring
