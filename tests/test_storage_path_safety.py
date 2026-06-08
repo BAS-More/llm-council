@@ -5,6 +5,7 @@ id must never be able to escape DATA_DIR. Runs fully offline with zero test deps
 `python tests/test_storage_path_safety.py` uses the built-in runner below, and pytest
 can also collect the test_* functions.
 """
+import os
 from pathlib import Path
 
 import backend.storage as storage
@@ -76,6 +77,36 @@ def test_non_v4_uuid_is_rejected():
         except ValueError:
             continue
         raise AssertionError(f"expected ValueError for non-v4 id {not_v4!r}")
+
+
+def test_symlink_escape_is_rejected():
+    # A planted "<uuid>.json" symlink pointing outside DATA_DIR must be rejected by the
+    # resolved-path containment check. Skips where the OS/user can't create symlinks.
+    import tempfile
+    import uuid as _uuid
+
+    base = tempfile.mkdtemp()
+    outside = tempfile.mkdtemp()
+    target = os.path.join(outside, "secret.json")
+    with open(target, "w") as fh:
+        fh.write("{}")
+    cid = str(_uuid.uuid4())
+    try:
+        os.symlink(target, os.path.join(base, f"{cid}.json"))
+    except (OSError, NotImplementedError):
+        return  # symlinks not permitted on this platform — skip
+    orig = storage.DATA_DIR
+    storage.DATA_DIR = base
+    try:
+        try:
+            storage.get_conversation_path(cid)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("symlink escaping DATA_DIR was not rejected")
+        assert storage.get_conversation(cid) is None
+    finally:
+        storage.DATA_DIR = orig
 
 
 if __name__ == "__main__":

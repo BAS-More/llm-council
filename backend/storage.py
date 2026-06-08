@@ -26,17 +26,19 @@ def get_conversation_path(conversation_id: str) -> str:
     """Build the on-disk path for a conversation.
 
     Hardened against path traversal (CodeQL py/path-injection):
-      1. Allow-list — the id must fully match _CONVERSATION_ID_RE (a UUID: hex + hyphens
-         only), so it cannot contain a path separator, "..", or a NUL byte.
-      2. Containment — the joined path must stay inside DATA_DIR (pure string check, no
-         filesystem access).
-    Raises ValueError on a malformed id instead of touching the filesystem.
+      1. Allow-list — the id must fully match _CONVERSATION_ID_RE (canonical UUIDv4), so
+         it holds only hex digits and hyphens: no path separator, "..", or NUL byte. This
+         runs before any filesystem call and is the barrier that sanitizes the input.
+      2. Containment — the *resolved* real path must sit directly inside the resolved
+         DATA_DIR. Resolving symlinks (not just a lexical check) also rejects a planted
+         "<uuid>.json" symlink that points outside DATA_DIR.
+    Raises ValueError on a malformed or out-of-tree id.
     """
     if not isinstance(conversation_id, str) or not _CONVERSATION_ID_RE.fullmatch(conversation_id):
         raise ValueError("Invalid conversation_id")
-    base = os.path.normpath(DATA_DIR)
-    path = os.path.normpath(os.path.join(base, f"{conversation_id}.json"))
-    if os.path.commonpath((base, path)) != base:
+    base = os.path.realpath(DATA_DIR)
+    path = os.path.realpath(os.path.join(base, f"{conversation_id}.json"))
+    if os.path.dirname(path) != base:
         raise ValueError("Invalid conversation_id")
     return path
 
