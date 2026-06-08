@@ -10,19 +10,11 @@ from .config import DATA_DIR
 
 
 # Conversation ids are server-generated UUID4 strings (see main.create_conversation).
-# Validate against that exact shape so a user-supplied id from the URL path can never
-# escape DATA_DIR via traversal ("../"), an absolute path, or a NUL byte.
-# CodeQL: py/path-injection.
+# A value that fully matches this pattern contains only hex digits and hyphens, so it
+# cannot hold a path separator, "..", or a NUL byte. CodeQL: py/path-injection.
 _CONVERSATION_ID_RE = re.compile(
-    r"\A[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\Z"
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 )
-
-
-def _safe_conversation_id(conversation_id: str) -> str:
-    """Return the id only if it is a well-formed UUID, else raise ValueError."""
-    if not isinstance(conversation_id, str) or not _CONVERSATION_ID_RE.match(conversation_id):
-        raise ValueError("Invalid conversation_id")
-    return conversation_id
 
 
 def ensure_data_dir():
@@ -33,16 +25,20 @@ def ensure_data_dir():
 def get_conversation_path(conversation_id: str) -> str:
     """Build the on-disk path for a conversation.
 
-    Validates the id (UUID allowlist) and confirms the resolved path stays directly
-    inside DATA_DIR — defense in depth against path traversal. Raises ValueError on a
-    malformed id rather than touching the filesystem.
+    Hardened against path traversal (CodeQL py/path-injection):
+      1. Allow-list — the id must fully match _CONVERSATION_ID_RE (a UUID: hex + hyphens
+         only), so it cannot contain a path separator, "..", or a NUL byte.
+      2. Containment — the joined path must stay inside DATA_DIR (pure string check, no
+         filesystem access).
+    Raises ValueError on a malformed id instead of touching the filesystem.
     """
-    safe_id = _safe_conversation_id(conversation_id)
-    base = Path(DATA_DIR).resolve()
-    path = (base / f"{safe_id}.json").resolve()
-    if path.parent != base:
+    if not isinstance(conversation_id, str) or not _CONVERSATION_ID_RE.fullmatch(conversation_id):
         raise ValueError("Invalid conversation_id")
-    return str(path)
+    base = os.path.normpath(DATA_DIR)
+    path = os.path.normpath(os.path.join(base, f"{conversation_id}.json"))
+    if os.path.commonpath((base, path)) != base:
+        raise ValueError("Invalid conversation_id")
+    return path
 
 
 def create_conversation(conversation_id: str) -> Dict[str, Any]:

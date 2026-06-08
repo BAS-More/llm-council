@@ -32,7 +32,7 @@ MALICIOUS_IDS = [
 
 
 def test_valid_uuid_maps_directly_inside_data_dir():
-    p = Path(storage.get_conversation_path(VALID_ID))
+    p = Path(storage.get_conversation_path(VALID_ID)).resolve()
     assert p.parent == Path(DATA_DIR).resolve(), p
     assert p.name == f"{VALID_ID}.json"
 
