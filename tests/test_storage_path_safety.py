@@ -10,7 +10,7 @@ from pathlib import Path
 import backend.storage as storage
 from backend.config import DATA_DIR
 
-VALID_ID = "12345678-1234-1234-1234-123456789abc"
+VALID_ID = "12345678-1234-4234-8234-123456789abc"
 
 # Each of these, if used unsanitized in os.path.join(DATA_DIR, f"{id}.json"), would
 # read/write outside DATA_DIR or otherwise abuse the filesystem.
