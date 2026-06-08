@@ -10,10 +10,10 @@ from .config import DATA_DIR
 
 
 # Conversation ids are server-generated UUID4 strings (see main.create_conversation).
-# A value that fully matches this pattern contains only hex digits and hyphens, so it
-# cannot hold a path separator, "..", or a NUL byte. CodeQL: py/path-injection.
+# Allow-list UUIDv4 specifically: 8-4-4-4-12 hex with version=4 and RFC 4122 variant.
+# This guarantees the id contains only hex digits and hyphens (no separators, "..", or NUL).
 _CONVERSATION_ID_RE = re.compile(
-    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}"
 )
 
 
