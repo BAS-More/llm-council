@@ -265,6 +265,9 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             # Send completion event
             yield f"data: {json.dumps({'type': 'complete'})}\n\n"
 
+        except asyncio.CancelledError:
+            # Normal on client disconnect / server shutdown; let cancellation propagate.
+            raise
         except Exception:
             # Log full detail server-side; never leak exception/stack-trace text to the
             # client (CodeQL py/stack-trace-exposure; mirrors the #7 async-job hardening).
