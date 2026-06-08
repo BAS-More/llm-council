@@ -8,6 +8,7 @@ from typing import List, Dict, Any
 import uuid
 import json
 import asyncio
+import logging
 
 from . import storage
 from . import config
@@ -264,9 +265,14 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             # Send completion event
             yield f"data: {json.dumps({'type': 'complete'})}\n\n"
 
-        except Exception as e:
-            # Send error event
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+        except asyncio.CancelledError:
+            # Normal on client disconnect / server shutdown; let cancellation propagate.
+            raise
+        except Exception:
+            # Log full detail server-side; never leak exception/stack-trace text to the
+            # client (CodeQL py/stack-trace-exposure; mirrors the #7 async-job hardening).
+            logging.getLogger("uvicorn.error").exception("Streaming council run failed")
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Internal server error'})}\n\n"
 
     return StreamingResponse(
         event_generator(),

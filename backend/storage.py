@@ -2,10 +2,19 @@
 
 import json
 import os
+import re
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 from .config import DATA_DIR
+
+
+# Conversation ids are server-generated UUID4 strings (see main.create_conversation).
+# Allow-list UUIDv4 specifically: 8-4-4-4-12 hex with version=4 and RFC 4122 variant.
+# This guarantees the id contains only hex digits and hyphens (no separators, "..", or NUL).
+_CONVERSATION_ID_RE = re.compile(
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}"
+)
 
 
 def ensure_data_dir():
@@ -14,8 +23,24 @@ def ensure_data_dir():
 
 
 def get_conversation_path(conversation_id: str) -> str:
-    """Get the file path for a conversation."""
-    return os.path.join(DATA_DIR, f"{conversation_id}.json")
+    """Build the on-disk path for a conversation.
+
+    Hardened against path traversal (CodeQL py/path-injection):
+      1. Allow-list — the id must fully match _CONVERSATION_ID_RE (canonical UUIDv4), so
+         it holds only hex digits and hyphens: no path separator, "..", or NUL byte. This
+         runs before any filesystem call and is the barrier that sanitizes the input.
+      2. Containment — the *resolved* real path must sit directly inside the resolved
+         DATA_DIR. Resolving symlinks (not just a lexical check) also rejects a planted
+         "<uuid>.json" symlink that points outside DATA_DIR.
+    Raises ValueError on a malformed or out-of-tree id.
+    """
+    if not isinstance(conversation_id, str) or not _CONVERSATION_ID_RE.fullmatch(conversation_id):
+        raise ValueError("Invalid conversation_id")
+    base = os.path.realpath(DATA_DIR)
+    path = os.path.realpath(os.path.join(base, f"{conversation_id}.json"))
+    if os.path.dirname(path) != base:
+        raise ValueError("Invalid conversation_id")
+    return path
 
 
 def create_conversation(conversation_id: str) -> Dict[str, Any]:
@@ -55,7 +80,11 @@ def get_conversation(conversation_id: str) -> Optional[Dict[str, Any]]:
     Returns:
         Conversation dict or None if not found
     """
-    path = get_conversation_path(conversation_id)
+    try:
+        path = get_conversation_path(conversation_id)
+    except ValueError:
+        # Malformed / malicious id (e.g. path traversal) — treat as "not found".
+        return None
 
     if not os.path.exists(path):
         return None
