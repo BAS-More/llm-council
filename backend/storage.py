@@ -2,10 +2,27 @@
 
 import json
 import os
+import re
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 from .config import DATA_DIR
+
+
+# Conversation ids are server-generated UUID4 strings (see main.create_conversation).
+# Validate against that exact shape so a user-supplied id from the URL path can never
+# escape DATA_DIR via traversal ("../"), an absolute path, or a NUL byte.
+# CodeQL: py/path-injection.
+_CONVERSATION_ID_RE = re.compile(
+    r"\A[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\Z"
+)
+
+
+def _safe_conversation_id(conversation_id: str) -> str:
+    """Return the id only if it is a well-formed UUID, else raise ValueError."""
+    if not isinstance(conversation_id, str) or not _CONVERSATION_ID_RE.match(conversation_id):
+        raise ValueError("Invalid conversation_id")
+    return conversation_id
 
 
 def ensure_data_dir():
@@ -14,8 +31,18 @@ def ensure_data_dir():
 
 
 def get_conversation_path(conversation_id: str) -> str:
-    """Get the file path for a conversation."""
-    return os.path.join(DATA_DIR, f"{conversation_id}.json")
+    """Build the on-disk path for a conversation.
+
+    Validates the id (UUID allowlist) and confirms the resolved path stays directly
+    inside DATA_DIR — defense in depth against path traversal. Raises ValueError on a
+    malformed id rather than touching the filesystem.
+    """
+    safe_id = _safe_conversation_id(conversation_id)
+    base = Path(DATA_DIR).resolve()
+    path = (base / f"{safe_id}.json").resolve()
+    if path.parent != base:
+        raise ValueError("Invalid conversation_id")
+    return str(path)
 
 
 def create_conversation(conversation_id: str) -> Dict[str, Any]:
@@ -55,7 +82,11 @@ def get_conversation(conversation_id: str) -> Optional[Dict[str, Any]]:
     Returns:
         Conversation dict or None if not found
     """
-    path = get_conversation_path(conversation_id)
+    try:
+        path = get_conversation_path(conversation_id)
+    except ValueError:
+        # Malformed / malicious id (e.g. path traversal) — treat as "not found".
+        return None
 
     if not os.path.exists(path):
         return None
