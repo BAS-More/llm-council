@@ -12,6 +12,14 @@ from backend.config import DATA_DIR
 
 VALID_ID = "12345678-1234-4234-8234-123456789abc"
 
+# Valid UUID *shape* but not v4 (wrong version or variant nibble) — rejected, because the
+# app only ever generates uuid4 and the allowlist is deliberately exact.
+NON_V4_IDS = [
+    "12345678-1234-1234-8234-123456789abc",  # version nibble = 1
+    "12345678-1234-6234-a234-123456789abc",  # version nibble = 6
+    "12345678-1234-4234-c234-123456789abc",  # v4 version but wrong variant nibble
+]
+
 # Each of these, if used unsanitized in os.path.join(DATA_DIR, f"{id}.json"), would
 # read/write outside DATA_DIR or otherwise abuse the filesystem.
 MALICIOUS_IDS = [
@@ -59,6 +67,15 @@ def test_non_string_id_is_rejected():
         except ValueError:
             continue
         raise AssertionError(f"expected ValueError for non-string id {bad!r}")
+
+
+def test_non_v4_uuid_is_rejected():
+    for not_v4 in NON_V4_IDS:
+        try:
+            storage.get_conversation_path(not_v4)
+        except ValueError:
+            continue
+        raise AssertionError(f"expected ValueError for non-v4 id {not_v4!r}")
 
 
 if __name__ == "__main__":
