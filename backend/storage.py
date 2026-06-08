@@ -23,29 +23,40 @@ def ensure_data_dir():
 
 
 def get_conversation_path(conversation_id: str) -> str:
-    """Build the on-disk path for a conversation.
+    """Validate the id and return a real path proven to sit inside DATA_DIR.
 
-    Hardened against path traversal (CodeQL py/path-injection):
+    Hardening follows CodeQL's recognized py/path-injection "normalize then check" form:
       1. Allow-list — the id must fully match _CONVERSATION_ID_RE (canonical UUIDv4), so
-         it holds only hex digits and hyphens: no path separator, "..", or NUL byte. This
-         runs before any filesystem call and is the barrier that sanitizes the input.
-      2. Containment — the *resolved* real path must sit directly inside the resolved
-         DATA_DIR. Resolving symlinks (not just a lexical check) also rejects a planted
-         "<uuid>.json" symlink that points outside DATA_DIR.
+         it holds only hex digits and hyphens: no path separator, "..", or NUL byte.
+      2. Normalize — os.path.realpath() resolves "../" segments and symlinks to a real path.
+      3. Containment — that real path must start with the resolved DATA_DIR + os.sep.
     Raises ValueError on a malformed or out-of-tree id.
     """
     if not isinstance(conversation_id, str) or not _CONVERSATION_ID_RE.fullmatch(conversation_id):
         raise ValueError("Invalid conversation_id")
-    # Route the filename through os.path.basename() before it is used in a path. The
-    # allow-list above already guarantees there is nothing to strip; basename() is a
-    # path-injection sanitizer CodeQL recognizes, so the value is treated as clean at the
-    # open()/exists() call sites in the callers below.
-    filename = os.path.basename(f"{conversation_id}.json")
     base = os.path.realpath(DATA_DIR)
-    path = os.path.realpath(os.path.join(base, filename))
-    if os.path.dirname(path) != base:
+    path = os.path.realpath(os.path.join(base, f"{conversation_id}.json"))
+    if not path.startswith(base + os.sep):
         raise ValueError("Invalid conversation_id")
     return path
+
+
+def _open_conversation_file(conversation_id: str, mode: str):
+    """Open a conversation's JSON file with the path-traversal guard CO-LOCATED with
+    open(). The allow-list, realpath() normalization and startswith() containment check
+    all run in THIS scope, immediately before open(). CodeQL's path-injection barrier is
+    domination-based and does not carry across a function return, so the check must sit in
+    the same scope as the sink to be recognized as sanitizing it (validating it once in a
+    helper and returning the path does not). Raises ValueError for a malformed/out-of-tree
+    id; FileNotFoundError propagates when a valid file is simply absent.
+    """
+    if not isinstance(conversation_id, str) or not _CONVERSATION_ID_RE.fullmatch(conversation_id):
+        raise ValueError("Invalid conversation_id")
+    base = os.path.realpath(DATA_DIR)
+    path = os.path.realpath(os.path.join(base, f"{conversation_id}.json"))
+    if not path.startswith(base + os.sep):
+        raise ValueError("Invalid conversation_id")
+    return open(path, mode)
 
 
 def create_conversation(conversation_id: str) -> Dict[str, Any]:
@@ -67,9 +78,8 @@ def create_conversation(conversation_id: str) -> Dict[str, Any]:
         "messages": []
     }
 
-    # Save to file
-    path = get_conversation_path(conversation_id)
-    with open(path, 'w') as f:
+    # Save to file (validated open; the path guard is co-located with open()).
+    with _open_conversation_file(conversation_id, 'w') as f:
         json.dump(conversation, f, indent=2)
 
     return conversation
@@ -86,16 +96,14 @@ def get_conversation(conversation_id: str) -> Optional[Dict[str, Any]]:
         Conversation dict or None if not found
     """
     try:
-        path = get_conversation_path(conversation_id)
+        with _open_conversation_file(conversation_id, 'r') as f:
+            return json.load(f)
     except ValueError:
         # Malformed / malicious id (e.g. path traversal) — treat as "not found".
         return None
-
-    if not os.path.exists(path):
+    except FileNotFoundError:
+        # Valid id, but no such conversation yet.
         return None
-
-    with open(path, 'r') as f:
-        return json.load(f)
 
 
 def save_conversation(conversation: Dict[str, Any]):
@@ -107,8 +115,7 @@ def save_conversation(conversation: Dict[str, Any]):
     """
     ensure_data_dir()
 
-    path = get_conversation_path(conversation['id'])
-    with open(path, 'w') as f:
+    with _open_conversation_file(conversation['id'], 'w') as f:
         json.dump(conversation, f, indent=2)
 
 
