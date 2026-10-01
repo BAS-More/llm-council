@@ -1,5 +1,8 @@
 # council-mcp runtime deps (deployed container only; not needed to run the unit tests)
-mcp>=1.9.0
+# mcp 2.x removed mcp.server.fastmcp (renamed MCPServer); council_mcp_server.py is v1 code.
+# Without this cap the import fails, is swallowed by the ImportError guard, `app` is never
+# defined, and uvicorn crash-loops with 'Attribute "app" not found'.
+mcp>=1.9.0,<2
 httpx>=0.27.0
 starlette>=1.3.1
 uvicorn[standard]>=0.30.0
